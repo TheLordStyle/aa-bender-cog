@@ -55,12 +55,14 @@ def _extract_items(payload: dict) -> list[dict]:
 
 
 def _extract_gif_url(item: dict) -> str | None:
-    files = item.get("files") or {}
+    # KLIPY returns the media tree under "file" (singular). Some older docs
+    # and articles say "files" — check both for robustness.
+    container = item.get("file") or item.get("files") or {}
     for size in ("hd", "lg", "md", "sm"):
-        url = (files.get(size) or {}).get("gif", {}).get("url")
+        url = (container.get(size) or {}).get("gif", {}).get("url")
         if url:
             return url
-    return (files.get("gif") or {}).get("url")
+    return (container.get("gif") or {}).get("url")
 
 
 def _summarise_payload(payload) -> str:
@@ -126,7 +128,7 @@ async def _fetch_klipy_gif() -> FetchResult:
             return FetchResult(gif_url=gif_url)
 
     reason = (
-        "HTTP 200, got items, but none had a files.{hd,lg,md,sm}.gif.url "
+        "HTTP 200, got items, but none had a file.{hd,lg,md,sm}.gif.url "
         f"field — first item was {_summarise_payload(items[0])}"
     )
     logger.error("KLIPY request: %s", reason)
