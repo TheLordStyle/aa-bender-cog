@@ -1,11 +1,12 @@
 """Discord cog providing the ``/bender`` slash command.
 
 The cog is auto-discovered by ``aadiscordbot`` because the package is listed
-in ``INSTALLED_APPS`` and exposes a top-level ``setup`` coroutine.
+in ``INSTALLED_APPS`` and its dotted path is added to ``DISCORD_BOT_COGS``.
 """
 
 import logging
 import random
+from typing import Any
 
 import aiohttp
 import discord
@@ -16,21 +17,9 @@ from bender import app_settings
 
 logger = logging.getLogger(__name__)
 
-
-FALLBACK_GIFS = [
-    "https://media.tenor.com/jJalKqB6oOoAAAAC/bender-futurama.gif",
-    "https://media.tenor.com/uMnK6JTAGicAAAAC/bender-futurama.gif",
-    "https://media.tenor.com/lzZ5R5G2RNkAAAAC/bender-bender-futurama.gif",
-    "https://media.tenor.com/3oqfHQ3oCk0AAAAC/bender-futurama.gif",
-    "https://media.tenor.com/Q2ETeaUI4soAAAAC/bender-rodriguez-futurama.gif",
-    "https://media.tenor.com/4nGz1xX9yLEAAAAC/bender-futurama.gif",
-    "https://media.tenor.com/zFqVjLp8aGwAAAAC/bender-bite-my-shiny-metal.gif",
-    "https://media.tenor.com/H8Z2VV0c7iIAAAAC/bender-futurama.gif",
-    "https://media.tenor.com/H6E3uM7t3HQAAAAC/futurama-bender.gif",
-    "https://media.tenor.com/g2YfPnpsmXMAAAAC/bender-futurama.gif",
-]
-
-TENOR_ENDPOINT = "https://tenor.googleapis.com/v2/search"
+KLIPY_SEARCH_URL = (
+    "https://api.klipy.com/api/v1/{api_key}/gifs/search"
+)
 
 
 class Bender(commands.Cog):
@@ -39,43 +28,69 @@ class Bender(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    async def _fetch_tenor_gif(self) -> str | None:
-        """Query Tenor for a random Bender gif. Returns ``None`` on failure."""
-        if not app_settings.BENDER_TENOR_API_KEY:
+    async def _fetch_klipy_gif(self) -> str | None:
+        """Query KLIPY for a random Bender gif. Returns ``None`` on failure."""
+        api_key = app_settings.BENDER_KLIPY_API_KEY
+        if not api_key:
             return None
 
+        url = KLIPY_SEARCH_URL.format(api_key=api_key)
         params = {
             "q": app_settings.BENDER_SEARCH_QUERY,
-            "key": app_settings.BENDER_TENOR_API_KEY,
-            "client_key": app_settings.BENDER_TENOR_CLIENT_KEY,
-            "limit": app_settings.BENDER_SEARCH_LIMIT,
-            "media_filter": "gif",
-            "random": "true",
+            "per_page": max(8, min(50, app_settings.BENDER_SEARCH_LIMIT)),
         }
 
         timeout = aiohttp.ClientTimeout(total=app_settings.BENDER_HTTP_TIMEOUT)
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(TENOR_ENDPOINT, params=params) as resp:
+                async with session.get(url, params=params) as resp:
                     if resp.status != 200:
                         logger.warning(
-                            "Tenor returned HTTP %s for /bender", resp.status
+                            "KLIPY returned HTTP %s for /bender", resp.status
                         )
                         return None
                     payload = await resp.json()
         except (aiohttp.ClientError, TimeoutError) as exc:
-            logger.warning("Tenor request failed: %s", exc)
+            logger.warning("KLIPY request failed: %s", exc)
             return None
 
-        results = payload.get("results") or []
-        if not results:
+        items = self._extract_items(payload)
+        if not items:
             return None
 
-        chosen = random.choice(results)
-        for fmt in ("gif", "mediumgif", "tinygif"):
-            media = chosen.get("media_formats", {}).get(fmt)
-            if media and media.get("url"):
-                return media["url"]
+        random.shuffle(items)
+        for item in items:
+            gif_url = self._extract_gif_url(item)
+            if gif_url:
+                return gif_url
+        return None
+
+    @staticmethod
+    def _extract_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
+        """Pull the result list out of KLIPY's paginated envelope.
+
+        KLIPY wraps results as ``{"data": {"data": [...]}}``; older or
+        alternate shapes flatten to ``{"data": [...]}``. Handle both.
+        """
+        data = payload.get("data")
+        if isinstance(data, dict):
+            inner = data.get("data")
+            if isinstance(inner, list):
+                return inner
+        if isinstance(data, list):
+            return data
+        return []
+
+    @staticmethod
+    def _extract_gif_url(item: dict[str, Any]) -> str | None:
+        files = item.get("files") or {}
+        for size in ("hd", "lg", "md", "sm"):
+            url = files.get(size, {}).get("gif", {}).get("url")
+            if url:
+                return url
+        url = files.get("gif", {}).get("url")
+        if url:
+            return url
         return None
 
     @app_commands.command(
@@ -85,9 +100,23 @@ class Bender(commands.Cog):
     async def bender(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(thinking=True)
 
-        gif_url = await self._fetch_tenor_gif()
+        if not app_settings.BENDER_KLIPY_API_KEY:
+            await interaction.followup.send(
+                "Bender is misconfigured — no KLIPY API key set. "
+                "Ask your Alliance Auth admin to set `BENDER_KLIPY_API_KEY` "
+                "in `local.py`.",
+                ephemeral=True,
+            )
+            return
+
+        gif_url = await self._fetch_klipy_gif()
         if gif_url is None:
-            gif_url = random.choice(FALLBACK_GIFS)
+            await interaction.followup.send(
+                "Bender is taking a smoke break — couldn't reach KLIPY. "
+                "Try again in a minute.",
+                ephemeral=True,
+            )
+            return
 
         embed = discord.Embed(
             title="Bite my shiny metal ass!",
