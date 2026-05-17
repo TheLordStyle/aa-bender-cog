@@ -1,6 +1,8 @@
 """Bender: post a random Futurama Bender gif via !bender / /bender."""
+import json
 import logging
 import random
+from dataclasses import dataclass
 
 import aiohttp
 from aadiscordbot.app_settings import get_all_servers
@@ -15,6 +17,15 @@ logger = logging.getLogger(__name__)
 # API on 2026-01-13 (full shutdown 2026-06-30). Request a key at
 # https://klipy.com/developers. The key goes in the URL path, not a header.
 KLIPY_SEARCH_URL = "https://api.klipy.com/api/v1/{api_key}/gifs/search"
+
+
+@dataclass
+class FetchResult:
+    """Outcome of a KLIPY fetch attempt — either a usable gif URL or a
+    human-readable reason it failed. The reason is surfaced both to the
+    Discord invoker and to the bot log."""
+    gif_url: str | None = None
+    reason: str | None = None
 
 
 def _build_embed(gif_url: str) -> Embed:
@@ -52,10 +63,19 @@ def _extract_gif_url(item: dict) -> str | None:
     return (files.get("gif") or {}).get("url")
 
 
-async def _fetch_klipy_gif() -> str | None:
+def _summarise_payload(payload) -> str:
+    """A short, single-line summary of the payload for an error message."""
+    try:
+        s = json.dumps(payload, separators=(",", ":"))
+    except (TypeError, ValueError):
+        s = repr(payload)
+    return s[:300] + ("…" if len(s) > 300 else "")
+
+
+async def _fetch_klipy_gif() -> FetchResult:
     api_key = getattr(settings, "BENDER_KLIPY_API_KEY", "")
     if not api_key:
-        return None
+        return FetchResult(reason="no API key configured")
 
     url = KLIPY_SEARCH_URL.format(api_key=api_key)
     per_page = max(8, min(50, getattr(settings, "BENDER_SEARCH_LIMIT", 50)))
@@ -70,25 +90,47 @@ async def _fetch_klipy_gif() -> str | None:
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(url, params=params) as resp:
+                body_text = await resp.text()
                 if resp.status != 200:
-                    logger.warning(
-                        "KLIPY returned HTTP %s for /bender", resp.status
+                    snippet = body_text[:200].replace("\n", " ")
+                    reason = f"HTTP {resp.status} — {snippet}"
+                    logger.error("KLIPY request: %s", reason)
+                    return FetchResult(reason=reason)
+                try:
+                    payload = json.loads(body_text)
+                except json.JSONDecodeError as exc:
+                    reason = (
+                        f"non-JSON response ({exc}): "
+                        f"{body_text[:200].replace(chr(10), ' ')}"
                     )
-                    return None
-                payload = await resp.json()
+                    logger.error("KLIPY request: %s", reason)
+                    return FetchResult(reason=reason)
     except (aiohttp.ClientError, TimeoutError) as exc:
-        logger.warning("KLIPY request failed: %s", exc)
-        return None
+        reason = f"network error: {type(exc).__name__}: {exc}"
+        logger.error("KLIPY request: %s", reason)
+        return FetchResult(reason=reason)
 
     items = _extract_items(payload)
     if not items:
-        return None
+        reason = (
+            "HTTP 200 but no items in response — payload was "
+            f"{_summarise_payload(payload)}"
+        )
+        logger.error("KLIPY request: %s", reason)
+        return FetchResult(reason=reason)
+
     random.shuffle(items)
     for item in items:
         gif_url = _extract_gif_url(item)
         if gif_url:
-            return gif_url
-    return None
+            return FetchResult(gif_url=gif_url)
+
+    reason = (
+        "HTTP 200, got items, but none had a files.{hd,lg,md,sm}.gif.url "
+        f"field — first item was {_summarise_payload(items[0])}"
+    )
+    logger.error("KLIPY request: %s", reason)
+    return FetchResult(reason=reason)
 
 
 class Bender(commands.Cog):
@@ -101,39 +143,24 @@ class Bender(commands.Cog):
 
     @commands.command(pass_context=True)
     async def bender(self, ctx):
-        if not getattr(settings, "BENDER_KLIPY_API_KEY", ""):
-            return await ctx.message.reply(
-                "Bender is misconfigured — no KLIPY API key set. "
-                "Ask your AA admin to set `BENDER_KLIPY_API_KEY` in `local.py`."
-            )
-
-        gif_url = await _fetch_klipy_gif()
-        if not gif_url:
-            return await ctx.message.reply(
-                "Bender is taking a smoke break — couldn't reach KLIPY. "
-                "Try again in a minute."
-            )
-        await ctx.message.reply(embed=_build_embed(gif_url))
+        result = await _fetch_klipy_gif()
+        if result.gif_url:
+            return await ctx.message.reply(embed=_build_embed(result.gif_url))
+        await ctx.message.reply(
+            f"Bender is taking a smoke break — {result.reason}"
+        )
 
     # ---- slash ---------------------------------------------------------
 
     @commands.slash_command(name="bender", guild_ids=get_all_servers())
     async def slash_bender(self, ctx):
-        if not getattr(settings, "BENDER_KLIPY_API_KEY", ""):
-            return await ctx.respond(
-                "Bender is misconfigured — no KLIPY API key set. "
-                "Ask your AA admin to set `BENDER_KLIPY_API_KEY` in `local.py`.",
-                ephemeral=True,
-            )
-
         await ctx.defer()
-        gif_url = await _fetch_klipy_gif()
-        if not gif_url:
-            return await ctx.respond(
-                "Bender is taking a smoke break — couldn't reach KLIPY. "
-                "Try again in a minute."
-            )
-        await ctx.respond(embed=_build_embed(gif_url))
+        result = await _fetch_klipy_gif()
+        if result.gif_url:
+            return await ctx.respond(embed=_build_embed(result.gif_url))
+        await ctx.respond(
+            f"Bender is taking a smoke break — {result.reason}"
+        )
 
 
 def setup(bot):
