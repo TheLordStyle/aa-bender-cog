@@ -1,38 +1,39 @@
 [build-system]
-requires = ["setuptools>=61", "wheel"]
+requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "aa-bender-cog"
 version = "0.1.0"
-description = "Alliance Auth Discord cog that posts a random Futurama Bender gif on /bender."
+description = "Alliance Auth Discord cog that posts a random Futurama Bender gif on /bender"
 readme = "README.md"
-license = { file = "LICENSE" }
-authors = [{ name = "TheLordStyle" }]
 requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "LordStyle" },
+]
+keywords = ["allianceauth", "eve-online", "discord", "aadiscordbot", "futurama"]
 classifiers = [
-    "Environment :: Web Environment",
+    "Environment :: Plugins",
     "Framework :: Django",
-    "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Topic :: Internet :: WWW/HTTP",
-]
-dependencies = [
-    "allianceauth>=4.0.0",
-    "allianceauth-app-utils>=1.19.0",
-    "aa-discordbot>=4.0.0",
-    "discord.py>=2.3",
-    "aiohttp>=3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Games/Entertainment",
 ]
 
+# Intentionally no `dependencies = [...]` here — Alliance Auth and
+# aadiscordbot must already be installed in the host environment.
+# Declaring them would risk pip resolving conflicting versions on install.
+# aiohttp is brought in transitively by aadiscordbot.
+
 [project.urls]
-Homepage = "https://github.com/TheLordStyle/aa-bender-cog"
-Source = "https://github.com/TheLordStyle/aa-bender-cog"
+Repository = "https://github.com/TheLordStyle/aa-bender-cog"
 Issues = "https://github.com/TheLordStyle/aa-bender-cog/issues"
 
 [tool.setuptools.packages.find]
-include = ["bender*"]
-exclude = ["tests*"]
+include = ["aa_bender*"]
