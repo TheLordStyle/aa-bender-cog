@@ -1,144 +1,126 @@
 # aa-bender-cog
 
+[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
+[![Alliance Auth](https://img.shields.io/badge/Alliance%20Auth-5.x-green.svg)](https://gitlab.com/allianceauth/allianceauth)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 An [Alliance Auth](https://gitlab.com/allianceauth/allianceauth) Discord cog
-that adds a `/bender` slash command. When invoked it pulls a random
-Futurama *Bender* gif and posts it in the channel where the command was run.
+that adds a `/bender` command. When invoked it pulls a random Futurama
+*Bender* gif from [KLIPY](https://klipy.com) and posts it in the channel
+the command was run in.
+
+Built on top of [aadiscordbot](https://github.com/pvyParts/allianceauth-discordbot).
 
 > "Bite my shiny metal ass!" — Bender Bending Rodríguez
 
-## Features
+## What it does
 
-- Single slash command: `/bender`
-- Works in any text channel the bot can see
-- Uses the [KLIPY API](https://klipy.com/developers) for a fresh,
-  randomised gif each time
+Posts a random Bender gif as a Discord embed. That's it.
 
-> **Why KLIPY and not Tenor?** Google deprecated the Tenor API on
-> 2026-01-13 and shuts it down completely on 2026-06-30. KLIPY is built by
-> former Tenor engineers as a near-drop-in replacement and is free for
-> our use case.
+KLIPY was chosen over Tenor because Google deprecated the Tenor API on
+2026-01-13 and shuts it down completely on 2026-06-30. KLIPY is built by
+former Tenor engineers as a near-drop-in replacement, free for our usage
+volume, and currently the easiest migration target.
+
+### Example output
+
+> **Bite my shiny metal ass!**
+> *(random Bender gif embedded here)*
+> Futurama / Bender
 
 ## Requirements
 
-- Alliance Auth `>= 4.0`
-- [`aa-discordbot`](https://github.com/pvyParts/allianceauth-discordbot)
-  installed and running (this is the AA bot that loads cogs)
-- Python `>= 3.10`
-- A working Discord bot already registered with Alliance Auth
-- A free KLIPY API key
+| Component | Version |
+|---|---|
+| Alliance Auth | ≥ 5.0 |
+| [allianceauth-discordbot](https://github.com/pvyParts/allianceauth-discordbot) | recent |
+| Python | ≥ 3.10 |
+| KLIPY API key | free, from <https://klipy.com/developers> |
 
-## Installation
+The cog does not touch the database, the EVE SDE, or corptools.
 
-The cog is a standard Django app that ships as a pip-installable package.
-Install it into the same virtualenv that Alliance Auth and `aa-discordbot`
-run in.
+## Install
 
-### 1. Get a KLIPY API key
+### Production (pinned)
 
-1. Go to <https://klipy.com/developers> and sign up.
-2. Create an app from the Partner Panel — the test key works fine and
-   gives 100 requests/minute, which is plenty for any alliance Discord.
-3. Copy the API key — you'll paste it into `local.py` in step 4.
+Add to your AA `requirements.txt`:
 
-### 2. Install the package
-
-From PyPI once published, or directly from the git repository:
-
-```bash
-# from PyPI (when released)
-pip install aa-bender-cog
-
-# or from source
-pip install git+https://github.com/TheLordStyle/aa-bender-cog.git
+```text
+git+https://github.com/TheLordStyle/aa-bender-cog.git@v0.1.0
 ```
 
-### 3. Add the app to `INSTALLED_APPS`
-
-Edit your Alliance Auth `local.py` (usually
-`myauth/myauth/settings/local.py`):
-
-```python
-INSTALLED_APPS += [
-    "bender",
-]
-```
-
-### 4. Register the cog and configure KLIPY
-
-In the same `local.py`:
+Then in `local.py`, add this as its own self-contained block (it does
+not need to be merged with any other cog's settings — `DISCORD_BOT_COGS
++= [...]` can appear once per cog):
 
 ```python
-DISCORD_BOT_COGS = globals().get("DISCORD_BOT_COGS", []) + [
-    "bender.cogs.bender",
-]
+# ============================================================
+#  aa-bender-cog  -  random Bender gif on /bender
+#  https://github.com/TheLordStyle/aa-bender-cog
+# ============================================================
+DISCORD_BOT_COGS += ["aa_bender.bender"]
 
-# Required
 BENDER_KLIPY_API_KEY = "your-klipy-api-key"
 
 # Optional — defaults shown
-BENDER_SEARCH_QUERY = "futurama bender"
-BENDER_SEARCH_LIMIT = 50    # how many results to ask for (8-50)
-BENDER_HTTP_TIMEOUT = 5.0   # seconds
+# BENDER_SEARCH_QUERY = "futurama bender"
+# BENDER_SEARCH_LIMIT = 50
+# BENDER_HTTP_TIMEOUT = 5.0
 ```
 
-### 5. Migrate and restart
+Rebuild and restart auth.
 
-The cog has no models, but you should still run `migrate` so Alliance
-Auth registers the app, then restart the AA stack and the Discord bot:
+### Development
+
+For iteration without rebuilding the whole stack, bind-mount a checkout
+into the discordbot container and install it editable:
 
 ```bash
-python manage.py migrate
-python manage.py collectstatic --noinput
+docker compose exec allianceauth_discordbot \
+    pip install -e /opt/cogs/aa-bender-cog
 
-# Restart whichever supervisor manages your services:
-supervisorctl restart myauth:
-# or, on a systemd-managed install:
-systemctl restart auth-discordbot.service
+docker compose restart allianceauth_discordbot
 ```
 
-### 6. Sync slash commands in Discord
+Note that editable installs don't survive a `docker compose down` and
+rebuild — production state always returns to whatever's pinned in
+`requirements.txt`.
 
-`aa-discordbot` syncs application (slash) commands on start-up. After the
-bot restarts, the `/bender` command should appear in Discord within a
-minute or two. If it does not show up, run the bot's command sync helper
-(consult your `aa-discordbot` version's docs — usually a `!sync` text
-command from an authorised user).
+## Settings
+
+| Setting | Default | Description |
+|---|---|---|
+| `BENDER_KLIPY_API_KEY` | `""` | KLIPY API key. Required — without it the command returns a friendly error. |
+| `BENDER_SEARCH_QUERY` | `"futurama bender"` | Search term sent to KLIPY. |
+| `BENDER_SEARCH_LIMIT` | `50` | How many gifs to fetch per call before picking one at random (8–50). |
+| `BENDER_HTTP_TIMEOUT` | `5.0` | HTTP timeout (seconds) when calling KLIPY. |
 
 ## Usage
 
-In any channel where the bot is present, type:
-
+```text
+!bender
 ```
+
+```text
 /bender
 ```
 
-Discord will autocomplete the command. Pressing enter posts a random
-Bender gif as an embed. The command is available to everyone who can see
-the channel — restrict access via channel permissions or via Discord's
-Application Command Permissions if you need to.
+Both forms work in any channel the bot can see. Restrict access via
+Discord's channel permissions or *Server Settings → Integrations →
+\[your bot\] → /bender* if you need to.
 
-## Troubleshooting
+## How it works
 
-| Symptom | Likely cause |
-|---|---|
-| `/bender` does not show up in Discord | Slash commands not synced yet — restart the bot and wait a couple of minutes, or trigger a manual sync. |
-| Bot says "Bender is misconfigured — no KLIPY API key set" | `BENDER_KLIPY_API_KEY` is missing from `local.py`, or the bot wasn't restarted after adding it. |
-| Bot says "Bender is taking a smoke break" | KLIPY request failed — check `aadiscordbot` logs for an HTTP status or network error. Common causes: bad API key, outbound network blocked, KLIPY temporarily down. |
-| Bot logs `KLIPY returned HTTP 401` or `403` | API key is invalid or revoked. Re-issue from the KLIPY Partner Panel. |
+The cog issues a single `GET` to KLIPY's search endpoint
+(`api.klipy.com/api/v1/{KEY}/gifs/search`) with `q=futurama bender` and
+`per_page=50`, then picks one result at random and embeds its `files.hd.gif.url`
+(falling back to lower-resolution variants if `hd` is missing). No
+caching, no background jobs — every `/bender` is one fresh request.
 
-Bot logs live wherever you configured `aa-discordbot` to log — by default
-the `aadiscordbot` logger writes alongside the rest of Alliance Auth.
+## Contributing
 
-## Development
-
-```bash
-git clone https://github.com/TheLordStyle/aa-bender-cog.git
-cd aa-bender-cog
-pip install -e .
-```
-
-The cog is intentionally tiny: one slash command, no models, no
-templates. Cog file lives at `bender/cogs/bender.py`.
+Bug reports and PRs welcome. Please open an issue first for anything beyond
+trivial fixes so we can talk about it.
 
 ## License
 
