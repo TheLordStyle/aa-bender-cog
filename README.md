@@ -91,7 +91,7 @@ rebuild — production state always returns to whatever's pinned in
 | Setting | Default | Description |
 |---|---|---|
 | `BENDER_KLIPY_API_KEY` | `""` | KLIPY API key. Required — without it the command returns a friendly error. |
-| `BENDER_SEARCH_QUERY` | `"futurama bender"` | Search term sent to KLIPY. |
+| `BENDER_SEARCH_QUERY` | `"futurama bender"` | Base search term sent to KLIPY. User-supplied keywords are appended to this. |
 | `BENDER_SEARCH_LIMIT` | `50` | How many gifs to fetch per call before picking one at random (8–50). |
 | `BENDER_HTTP_TIMEOUT` | `5.0` | HTTP timeout (seconds) when calling KLIPY. |
 
@@ -99,11 +99,19 @@ rebuild — production state always returns to whatever's pinned in
 
 ```text
 !bender
+!bender dance
+!bender angry walking
+
+/bender
+/bender keywords:dance
+/bender keywords:angry walking
 ```
 
-```text
-/bender
-```
+With no argument the search is just `futurama bender`. Supplying
+keywords narrows it — they're **appended** to the base query, so
+`/bender keywords:dance` searches `futurama bender dance` and the
+result is still a Bender gif. If no gifs match your keywords KLIPY
+returns an empty result and the command will tell you so.
 
 Both forms work in any channel the bot can see. Restrict access via
 Discord's channel permissions or *Server Settings → Integrations →
