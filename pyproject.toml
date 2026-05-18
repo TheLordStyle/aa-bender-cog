@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aa-bender-cog"
-version = "0.1.2"
+version = "0.1.3"
 description = "Alliance Auth Discord cog that posts a random Futurama Bender gif on /bender"
 readme = "README.md"
 requires-python = ">=3.10"

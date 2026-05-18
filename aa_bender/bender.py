@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 import aiohttp
 from aadiscordbot.app_settings import get_all_servers
+from discord import option
 from discord.embeds import Embed
 from discord.ext import commands
 
@@ -74,7 +75,19 @@ def _summarise_payload(payload) -> str:
     return s[:300] + ("…" if len(s) > 300 else "")
 
 
-async def _fetch_klipy_gif() -> FetchResult:
+def _build_query(extra_keywords: str | None) -> str:
+    """Append optional user keywords to the configured base query.
+
+    Always keeps the base ("futurama bender" by default) so /bender remains
+    a Bender command even when the user narrows it.
+    """
+    base = getattr(settings, "BENDER_SEARCH_QUERY", "futurama bender")
+    if not extra_keywords:
+        return base
+    return f"{base} {extra_keywords.strip()}"
+
+
+async def _fetch_klipy_gif(extra_keywords: str | None = None) -> FetchResult:
     api_key = getattr(settings, "BENDER_KLIPY_API_KEY", "")
     if not api_key:
         return FetchResult(reason="no API key configured")
@@ -82,7 +95,7 @@ async def _fetch_klipy_gif() -> FetchResult:
     url = KLIPY_SEARCH_URL.format(api_key=api_key)
     per_page = max(8, min(50, getattr(settings, "BENDER_SEARCH_LIMIT", 50)))
     params = {
-        "q": getattr(settings, "BENDER_SEARCH_QUERY", "futurama bender"),
+        "q": _build_query(extra_keywords),
         "per_page": per_page,
     }
     timeout = aiohttp.ClientTimeout(
@@ -144,8 +157,8 @@ class Bender(commands.Cog):
     # ---- prefix --------------------------------------------------------
 
     @commands.command(pass_context=True)
-    async def bender(self, ctx):
-        result = await _fetch_klipy_gif()
+    async def bender(self, ctx, *, keywords: str = None):
+        result = await _fetch_klipy_gif(keywords)
         if result.gif_url:
             return await ctx.message.reply(embed=_build_embed(result.gif_url))
         await ctx.message.reply(
@@ -155,9 +168,14 @@ class Bender(commands.Cog):
     # ---- slash ---------------------------------------------------------
 
     @commands.slash_command(name="bender", guild_ids=get_all_servers())
-    async def slash_bender(self, ctx):
+    @option(
+        "keywords",
+        description="Extra keywords to narrow the search (optional)",
+        required=False,
+    )
+    async def slash_bender(self, ctx, keywords: str = None):
         await ctx.defer()
-        result = await _fetch_klipy_gif()
+        result = await _fetch_klipy_gif(keywords)
         if result.gif_url:
             return await ctx.respond(embed=_build_embed(result.gif_url))
         await ctx.respond(
