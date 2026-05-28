@@ -87,21 +87,25 @@ def _build_query(extra_keywords: str | None) -> str:
     return f"{base} {extra_keywords.strip()}"
 
 
+def _matches_all_keywords(item: dict, extra_keywords: str) -> bool:
+    """All keyword words must appear (case-insensitive) in the item's title
+    or slug. KLIPY's search ranks rather than filters, so the top results
+    for "futurama bender dance" still include plenty of non-dance Bender
+    gifs — this filter is what actually enforces the user's keywords.
+    """
+    haystack = (
+        (item.get("title") or "") + " " + (item.get("slug") or "")
+    ).lower()
+    return all(word in haystack for word in extra_keywords.lower().split())
+
+
 async def _fetch_klipy_gif(extra_keywords: str | None = None) -> FetchResult:
     api_key = getattr(settings, "BENDER_KLIPY_API_KEY", "")
     if not api_key:
         return FetchResult(reason="no API key configured")
 
     url = KLIPY_SEARCH_URL.format(api_key=api_key)
-    # KLIPY's search is ranked, not filtered. When the user supplies
-    # keywords we narrow per_page so the random pick stays on-topic
-    # (the top of the ranking is what they actually wanted). Without
-    # keywords we ask for the full sample to maximise variety.
-    if extra_keywords:
-        per_page_setting = getattr(settings, "BENDER_KEYWORD_SEARCH_LIMIT", 12)
-    else:
-        per_page_setting = getattr(settings, "BENDER_SEARCH_LIMIT", 50)
-    per_page = max(8, min(50, per_page_setting))
+    per_page = max(8, min(50, getattr(settings, "BENDER_SEARCH_LIMIT", 50)))
     params = {
         "q": _build_query(extra_keywords),
         "per_page": per_page,
@@ -141,6 +145,16 @@ async def _fetch_klipy_gif(extra_keywords: str | None = None) -> FetchResult:
         )
         logger.error("KLIPY request: %s", reason)
         return FetchResult(reason=reason)
+
+    if extra_keywords:
+        matched = [
+            it for it in items if _matches_all_keywords(it, extra_keywords)
+        ]
+        if not matched:
+            return FetchResult(
+                reason=f"no Bender gifs found matching `{extra_keywords}`"
+            )
+        items = matched
 
     random.shuffle(items)
     for item in items:

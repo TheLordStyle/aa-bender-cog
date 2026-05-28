@@ -92,8 +92,7 @@ rebuild — production state always returns to whatever's pinned in
 |---|---|---|
 | `BENDER_KLIPY_API_KEY` | `""` | KLIPY API key. Required — without it the command returns a friendly error. |
 | `BENDER_SEARCH_QUERY` | `"futurama bender"` | Base search term sent to KLIPY. User-supplied keywords are appended to this. |
-| `BENDER_SEARCH_LIMIT` | `50` | How many gifs to fetch per call when no keywords are supplied — picks one at random (8–50). |
-| `BENDER_KEYWORD_SEARCH_LIMIT` | `12` | How many gifs to fetch when the user supplied keywords. KLIPY's search is ranked, so a smaller pool keeps the random pick on-topic (8–50). |
+| `BENDER_SEARCH_LIMIT` | `50` | How many gifs to fetch per call before picking one at random (8–50). |
 | `BENDER_HTTP_TIMEOUT` | `5.0` | HTTP timeout (seconds) when calling KLIPY. |
 
 ## Usage
@@ -109,10 +108,10 @@ rebuild — production state always returns to whatever's pinned in
 ```
 
 With no argument the search is just `futurama bender`. Supplying
-keywords narrows it — they're **appended** to the base query, so
-`/bender keywords:dance` searches `futurama bender dance` and the
-result is still a Bender gif. If no gifs match your keywords KLIPY
-returns an empty result and the command will tell you so.
+keywords narrows it — they're appended to the base query, and the
+results are filtered client-side so that every keyword word appears
+in the gif's title or slug. If nothing in the pool actually matches,
+the command says so instead of returning an unrelated Bender gif.
 
 Both forms work in any channel the bot can see. Restrict access via
 Discord's channel permissions or *Server Settings → Integrations →
