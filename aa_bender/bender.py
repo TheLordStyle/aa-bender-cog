@@ -93,7 +93,15 @@ async def _fetch_klipy_gif(extra_keywords: str | None = None) -> FetchResult:
         return FetchResult(reason="no API key configured")
 
     url = KLIPY_SEARCH_URL.format(api_key=api_key)
-    per_page = max(8, min(50, getattr(settings, "BENDER_SEARCH_LIMIT", 50)))
+    # KLIPY's search is ranked, not filtered. When the user supplies
+    # keywords we narrow per_page so the random pick stays on-topic
+    # (the top of the ranking is what they actually wanted). Without
+    # keywords we ask for the full sample to maximise variety.
+    if extra_keywords:
+        per_page_setting = getattr(settings, "BENDER_KEYWORD_SEARCH_LIMIT", 12)
+    else:
+        per_page_setting = getattr(settings, "BENDER_SEARCH_LIMIT", 50)
+    per_page = max(8, min(50, per_page_setting))
     params = {
         "q": _build_query(extra_keywords),
         "per_page": per_page,
