@@ -93,6 +93,7 @@ rebuild — production state always returns to whatever's pinned in
 | `BENDER_KLIPY_API_KEY` | `""` | KLIPY API key. Required — without it the command returns a friendly error. |
 | `BENDER_SEARCH_QUERY` | `"futurama bender"` | Base search term sent to KLIPY. User-supplied keywords are appended to this. |
 | `BENDER_SEARCH_LIMIT` | `50` | How many gifs to fetch per call before picking one at random (8–50). |
+| `BENDER_CONTENT_FILTER` | `"off"` | KLIPY content filter. One of `off`, `low`, `medium`, `high`. KLIPY's Partner Dashboard also has a global default — if expected keywords still return no matches after deploy, check the dashboard (it may be stricter than this setting). |
 | `BENDER_HTTP_TIMEOUT` | `5.0` | HTTP timeout (seconds) when calling KLIPY. |
 
 ## Usage
@@ -112,6 +113,11 @@ keywords narrows it — they're appended to the base query, and the
 results are filtered client-side so that every keyword word appears
 in the gif's title or slug. If nothing in the pool actually matches,
 the command says so instead of returning an unrelated Bender gif.
+
+If a keyword you expect to work returns "no matches" — e.g. `drunk`,
+swear words, or other mature terms — your KLIPY Partner Dashboard
+global content filter is probably stricter than `BENDER_CONTENT_FILTER`.
+Adjust it at <https://partner.klipy.com/>.
 
 Both forms work in any channel the bot can see. Restrict access via
 Discord's channel permissions or *Server Settings → Integrations →

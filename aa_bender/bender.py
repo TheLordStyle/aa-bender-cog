@@ -106,9 +106,17 @@ async def _fetch_klipy_gif(extra_keywords: str | None = None) -> FetchResult:
 
     url = KLIPY_SEARCH_URL.format(api_key=api_key)
     per_page = max(8, min(50, getattr(settings, "BENDER_SEARCH_LIMIT", 50)))
+    content_filter = getattr(settings, "BENDER_CONTENT_FILTER", "off")
+    if content_filter not in ("off", "low", "medium", "high"):
+        content_filter = "off"
     params = {
         "q": _build_query(extra_keywords),
         "per_page": per_page,
+        # KLIPY's docs (behind Cloudflare) don't confirm whether the field
+        # is snake_case (consistent with `per_page`) or Tenor-style
+        # lowercase. Send both — unknown params are ignored.
+        "content_filter": content_filter,
+        "contentfilter": content_filter,
     }
     timeout = aiohttp.ClientTimeout(
         total=getattr(settings, "BENDER_HTTP_TIMEOUT", 5.0)
